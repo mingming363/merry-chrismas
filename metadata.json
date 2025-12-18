@@ -1,0 +1,7 @@
+{
+  "name": "Christmas Tree",
+  "description": "A magical 3D Christmas experience using Three.js and MediaPipe for hand gesture control.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
