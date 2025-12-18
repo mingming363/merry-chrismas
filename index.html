@@ -235,11 +235,11 @@
             colors: {
                 gold: 0xd4af37,
                 cream: 0xfceea7,
-                red: 0xcc0000,
+                red: 0xd90429,
                 green: 0x0f4d0f
             },
-            particleCount: 1500,
-            dustCount: 2500,
+            particleCount: 1600,
+            dustCount: 3000,
             modes: {
                 TREE: 'TREE',
                 SCATTER: 'SCATTER',
@@ -269,6 +269,9 @@
                     (Math.random() - 0.5) * 0.1
                 );
                 
+                // Random phase for blinking/movement
+                this.phase = Math.random() * Math.PI * 2;
+
                 // Assigned Tree Position (Spiral)
                 const yPos = Math.random() * 40 - 20; // -20 to 20
                 const t = (yPos + 20) / 40; // 0 to 1 (bottom to top)
@@ -286,10 +289,6 @@
                 if (this.type === 'PHOTO') {
                     const dummy = new THREE.Object3D();
                     dummy.position.copy(this.treePos);
-                    // Look at center (0, y, 0). 
-                    // Three.js lookAt points the local -Z axis at the target.
-                    // The photo is on the +Z face of the BoxGeometry.
-                    // Therefore, looking at the center makes the photo face OUTWARDS.
                     dummy.lookAt(0, this.treePos.y, 0);
                     this.treeRot = dummy.rotation.clone();
                 } else {
@@ -307,27 +306,29 @@
             update(time) {
                 const lerpSpeed = 0.05;
 
+                // Twinkle effect for dust and some shapes
+                if (this.type === 'DUST') {
+                     // Oscillate opacity
+                     this.mesh.material.opacity = 0.3 + Math.sin(time * 2 + this.phase) * 0.3;
+                }
+
                 // Determine Target based on Mode
                 if (STATE.mode === CONFIG.modes.TREE) {
                     this.targetPos.copy(this.treePos);
                     this.targetRot.copy(this.treeRot);
                     
                     // Gentle float in tree mode
-                    this.targetPos.y += Math.sin(time + this.mesh.id) * 0.05;
+                    this.targetPos.y += Math.sin(time + this.phase) * 0.05;
                     this.mesh.scale.lerp(this.baseScale, lerpSpeed);
 
                 } else if (STATE.mode === CONFIG.modes.SCATTER) {
-                    // In scatter mode, particles drift or rotate
                     if (this.type !== 'DUST') {
-                        // Rotation logic for SCATTER mode as requested
                         this.mesh.rotation.x += this.velocity.x;
                         this.mesh.rotation.y += this.velocity.y;
                     }
 
-                    // For the target position, we don't strictly lerp to a static point in scatter, 
-                    // but if transitioning to scatter, we push them out.
                     if (!this.scatterPos) {
-                         const r = 8 + Math.random() * 12; // 8-20 radius
+                         const r = 8 + Math.random() * 12;
                          const theta = Math.random() * Math.PI * 2;
                          const phi = Math.acos(2 * Math.random() - 1);
                          this.scatterPos = new THREE.Vector3(
@@ -341,13 +342,11 @@
 
                 } else if (STATE.mode === CONFIG.modes.FOCUS) {
                     if (this === STATE.targetPhoto) {
-                        // Chosen one
-                        this.targetPos.set(0, 2, 35); // Front of camera
+                        this.targetPos.set(0, 2, 35);
                         this.targetRot.set(0, 0, 0);
-                        const focusScale = new THREE.Vector3(4.5, 4.5, 4.5); // Requested Scale
+                        const focusScale = new THREE.Vector3(4.5, 4.5, 4.5);
                         this.mesh.scale.lerp(focusScale, lerpSpeed);
                     } else {
-                        // Others scatter to background
                         if (!this.focusScatterPos) {
                             const r = 30 + Math.random() * 20;
                             const theta = Math.random() * Math.PI * 2;
@@ -363,12 +362,9 @@
                     }
                 }
 
-                // Apply movement
                 this.mesh.position.lerp(this.targetPos, lerpSpeed);
                 
-                // Apply rotation (unless scattering where we auto-rotate above)
                 if (STATE.mode !== CONFIG.modes.SCATTER) {
-                     // Quaternion slerp would be better, but Euler lerping for simple effects:
                      this.mesh.rotation.x += (this.targetRot.x - this.mesh.rotation.x) * lerpSpeed;
                      this.mesh.rotation.y += (this.targetRot.y - this.mesh.rotation.y) * lerpSpeed;
                      this.mesh.rotation.z += (this.targetRot.z - this.mesh.rotation.z) * lerpSpeed;
@@ -395,49 +391,45 @@
             }
 
             initThree() {
-                // Scene
                 this.scene = new THREE.Scene();
-
-                // Camera
-                // Adjusted position to ensure the full tree (-20 to 20 height) is visible
                 this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
                 this.camera.position.set(0, 0, 70); 
 
-                // Renderer
                 this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
                 this.renderer.setPixelRatio(window.devicePixelRatio);
-                this.renderer.toneMapping = THREE.ReinhardToneMapping;
-                this.renderer.toneMappingExposure = 2.2;
+                // Use ACESFilmic for better HDR-like color handling with bloom
+                this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+                this.renderer.toneMappingExposure = 1.0;
                 this.container.appendChild(this.renderer.domElement);
 
-                // Environment
                 const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
                 this.scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
 
-                // Lighting
-                const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+                // Lighting Setup
+                const ambient = new THREE.AmbientLight(0xffffff, 0.2); // Low ambient to let emissive pop
                 this.scene.add(ambient);
 
-                const centerLight = new THREE.PointLight(0xffaa00, 2, 50);
-                this.scene.add(centerLight);
+                // Internal Tree Glow
+                const pointLight = new THREE.PointLight(0xffaa00, 2, 30);
+                pointLight.position.set(0, 0, 0);
+                this.scene.add(pointLight);
 
-                const spotGold = new THREE.SpotLight(CONFIG.colors.gold, 1200);
-                spotGold.position.set(30, 40, 40);
+                // Dramatic Highlights
+                const spotGold = new THREE.SpotLight(CONFIG.colors.gold, 800);
+                spotGold.position.set(40, 50, 40);
                 spotGold.angle = Math.PI / 4;
                 spotGold.penumbra = 0.5;
                 this.scene.add(spotGold);
 
-                const spotBlue = new THREE.SpotLight(0x4444ff, 600);
-                spotBlue.position.set(-30, 20, -30); // Cold contrast
+                const spotBlue = new THREE.SpotLight(0x4444ff, 500);
+                spotBlue.position.set(-40, 20, -40);
                 spotBlue.angle = Math.PI / 4;
                 this.scene.add(spotBlue);
 
-                // Main Group for Rotation
                 this.mainGroup = new THREE.Group();
                 this.scene.add(this.mainGroup);
 
-                // Resizing
                 window.addEventListener('resize', () => {
                     this.camera.aspect = window.innerWidth / window.innerHeight;
                     this.camera.updateProjectionMatrix();
@@ -451,17 +443,17 @@
                 const renderPass = new RenderPass(this.scene, this.camera);
                 this.composer.addPass(renderPass);
 
+                // High Quality Bloom settings
                 const bloomPass = new UnrealBloomPass(
                     new THREE.Vector2(window.innerWidth, window.innerHeight),
-                    0.45, // strength
-                    0.4,  // radius
-                    0.7   // threshold
+                    1.5,  // Strength: Much higher for magical glow
+                    0.5,  // Radius: Wider spread
+                    0.1   // Threshold: Lower to catch more objects
                 );
                 this.composer.addPass(bloomPass);
             }
 
             createCandyCaneGeometry() {
-                // Procedural Curve
                 const path = new THREE.CatmullRomCurve3([
                     new THREE.Vector3(0, -1, 0),
                     new THREE.Vector3(0, 0.5, 0),
@@ -471,14 +463,13 @@
                 
                 const tubeGeo = new THREE.TubeGeometry(path, 20, 0.08, 8, false);
                 
-                // Procedural Texture
                 const canvas = document.createElement('canvas');
                 canvas.width = 64;
                 canvas.height = 64;
                 const ctx = canvas.getContext('2d');
                 ctx.fillStyle = '#ffffff';
                 ctx.fillRect(0,0,64,64);
-                ctx.strokeStyle = '#cc0000';
+                ctx.strokeStyle = '#d90429';
                 ctx.lineWidth = 20;
                 ctx.beginPath();
                 ctx.moveTo(0,0); ctx.lineTo(64,64);
@@ -492,10 +483,12 @@
                 texture.repeat.set(1, 4);
                 texture.colorSpace = THREE.SRGBColorSpace;
 
+                // Add emissive to white parts of candy cane
                 const mat = new THREE.MeshStandardMaterial({
                     map: texture,
                     roughness: 0.2,
-                    metalness: 0.1
+                    metalness: 0.1,
+                    emissive: 0x222222, // Slight glow
                 });
                 
                 return { geometry: tubeGeo, material: mat };
@@ -504,13 +497,16 @@
             createPhotoFrame(texture) {
                 const frameGeo = new THREE.BoxGeometry(1.2, 1.2, 0.1);
                 
-                // Materials: [Right, Left, Top, Bottom, Front, Back]
+                // Gold Frame with High Emissive
                 const goldMat = new THREE.MeshStandardMaterial({
                     color: CONFIG.colors.gold,
                     metalness: 1,
-                    roughness: 0.2
+                    roughness: 0.1,
+                    emissive: CONFIG.colors.gold,
+                    emissiveIntensity: 0.3
                 });
                 
+                // Photo material - no emissive to keep image clear, or very low
                 const photoMat = new THREE.MeshBasicMaterial({
                     map: texture
                 });
@@ -551,9 +547,33 @@
                 const boxGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
                 const sphereGeo = new THREE.SphereGeometry(0.2, 16, 16);
                 
-                const matGold = new THREE.MeshStandardMaterial({ color: CONFIG.colors.gold, metalness: 0.8, roughness: 0.2 });
-                const matGreen = new THREE.MeshStandardMaterial({ color: CONFIG.colors.green, metalness: 0.5, roughness: 0.6 });
-                const matRed = new THREE.MeshPhysicalMaterial({ color: CONFIG.colors.red, metalness: 0.2, roughness: 0.2, clearcoat: 1.0 });
+                // Glowing Gold
+                const matGold = new THREE.MeshStandardMaterial({ 
+                    color: CONFIG.colors.gold, 
+                    metalness: 0.9, 
+                    roughness: 0.1,
+                    emissive: CONFIG.colors.gold,
+                    emissiveIntensity: 0.4
+                });
+
+                // Deep Green (less glow, more reflection)
+                const matGreen = new THREE.MeshStandardMaterial({ 
+                    color: CONFIG.colors.green, 
+                    metalness: 0.5, 
+                    roughness: 0.3,
+                    emissive: CONFIG.colors.green,
+                    emissiveIntensity: 0.1
+                });
+
+                // Glowing Red
+                const matRed = new THREE.MeshPhysicalMaterial({ 
+                    color: CONFIG.colors.red, 
+                    metalness: 0.2, 
+                    roughness: 0.1, 
+                    clearcoat: 1.0,
+                    emissive: CONFIG.colors.red,
+                    emissiveIntensity: 0.5
+                });
                 
                 const candy = this.createCandyCaneGeometry();
 
@@ -567,7 +587,6 @@
                         mesh = new THREE.Mesh(sphereGeo, Math.random() > 0.5 ? matGold : matRed);
                     } else {
                         mesh = new THREE.Mesh(candy.geometry, candy.material);
-                        // Random rotation for candy canes
                         mesh.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, 0);
                     }
                     
@@ -575,19 +594,25 @@
                     this.particles.push(new Particle(mesh, 'SHAPE'));
                 }
 
-                // 2. Dust
-                const dustGeo = new THREE.BufferGeometry();
-                const dustPos = [];
+                // 2. Dust - Using AdditiveBlending for light accumulation
                 for(let i=0; i<CONFIG.dustCount; i++) {
                    const x = (Math.random() - 0.5) * 60;
                    const y = (Math.random() - 0.5) * 60;
                    const z = (Math.random() - 0.5) * 60;
-                   const dustMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.1), new THREE.MeshBasicMaterial({
-                       color: CONFIG.colors.cream, opacity: 0.6, transparent: true, blending: THREE.AdditiveBlending
-                   }));
+                   
+                   const dustMat = new THREE.MeshBasicMaterial({
+                       color: 0xffffee, 
+                       opacity: Math.random() * 0.5 + 0.2, 
+                       transparent: true, 
+                       blending: THREE.AdditiveBlending,
+                       depthWrite: false
+                   });
+
+                   const dustMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.15), dustMat);
                    dustMesh.position.set(x,y,z);
+                   dustMesh.lookAt(0,0,70); // Face camera roughly
+                   
                    this.mainGroup.add(dustMesh);
-                   // Treat dust as particles but with simplified update logic if needed
                    this.particles.push(new Particle(dustMesh, 'DUST'));
                 }
 
