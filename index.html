@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Magical Christmas Tree</title>
     
     <!-- Fonts -->
@@ -34,6 +34,7 @@
             font-family: 'Times New Roman', serif;
             color: var(--cream);
             user-select: none;
+            touch-action: manipulation; /* Improves touch response */
         }
 
         /* --- UI Overlay --- */
@@ -207,7 +208,7 @@
                 <button class="btn-glass">Add Memories</button>
                 <input type="file" id="imageUpload" accept="image/*">
             </div>
-            <div class="hint-text">Press 'H' to Hide Controls</div>
+            <div class="hint-text">Double Click to Start / Hide</div>
         </div>
     </div>
 
@@ -613,16 +614,26 @@
                     reader.readAsDataURL(f);
                 });
 
-                // Hide UI
+                // Toggle UI Logic
+                const toggleUI = () => {
+                    const ui = document.getElementById('ui-container');
+                    if (ui.classList.contains('ui-hidden')) {
+                        ui.classList.remove('ui-hidden');
+                    } else {
+                        ui.classList.add('ui-hidden');
+                    }
+                };
+
+                // Hide UI with 'H' (Keep legacy support for desktop)
                 window.addEventListener('keydown', (e) => {
                     if (e.key.toLowerCase() === 'h') {
-                        const ui = document.getElementById('ui-container');
-                        if (ui.classList.contains('ui-hidden')) {
-                            ui.classList.remove('ui-hidden');
-                        } else {
-                            ui.classList.add('ui-hidden');
-                        }
+                        toggleUI();
                     }
+                });
+
+                // Hide/Show UI with Double Click (Mobile Friendly)
+                window.addEventListener('dblclick', (e) => {
+                    toggleUI();
                 });
             }
 
